@@ -40,6 +40,14 @@ const departmentOptions = [
   { value: '运营部', label: '运营部' },
 ]
 
+const roleOptions = [
+  { value: '', label: '全部角色' },
+  { value: 'super_admin', label: '超级管理员' },
+  { value: 'department_approver', label: '部门审批人' },
+  { value: 'finance_approver', label: '财务审批人' },
+  { value: 'applicant', label: '申请人' },
+]
+
 const statusBadge: Record<string, string> = {
   pending: 'bg-amber-500/20 text-amber-400',
   processing: 'bg-blue-500/20 text-blue-400',
@@ -115,6 +123,13 @@ function goToDetail(id: string) {
           @change="store.setFilterDepartment(($event.target as HTMLSelectElement).value)"
         >
           <option v-for="opt in departmentOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
+        <select
+          :value="store.filterRole"
+          class="bg-slate-800 text-slate-200 text-sm rounded-lg px-3 py-2 border border-slate-600 focus:outline-none focus:border-slate-500"
+          @change="store.setFilterRole(($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
         <div class="relative flex-1 min-w-[200px]">
           <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

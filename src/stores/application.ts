@@ -24,6 +24,7 @@ export const useApplicationStore = defineStore('application', {
     filterStatus: '' as string,
     filterType: '' as string,
     filterDepartment: '' as string,
+    filterRole: '' as string,
     searchQuery: '' as string,
     currentPage: 1,
     pageSize: 10,
@@ -42,6 +43,13 @@ export const useApplicationStore = defineStore('application', {
       }
       if (state.filterDepartment) {
         result = result.filter(app => app.department === state.filterDepartment)
+      }
+      if (state.filterRole) {
+        const roleFlows = mockFlows.filter(f =>
+          f.nodes.some(n => n.requiredRoles.includes(state.filterRole)),
+        )
+        const roleFlowAppIds = new Set(roleFlows.map(f => f.applicationId))
+        result = result.filter(app => roleFlowAppIds.has(app.id))
       }
       if (state.searchQuery) {
         const query = state.searchQuery.toLowerCase()
@@ -85,6 +93,18 @@ export const useApplicationStore = defineStore('application', {
       const node = this.currentFlow.nodes.find(n => n.id === this.selectedNodeId)
       if (!node) return []
       return mockRoles.filter(p => node.requiredRoles.includes(p.roleId))
+    },
+
+    myPendingCount(): number {
+      const authStore = useAuthStore()
+      const role = authStore.currentUser.role
+      const roleFlows = mockFlows.filter(f =>
+        f.nodes.some(n => n.requiredRoles.includes(role)),
+      )
+      const roleFlowAppIds = new Set(roleFlows.map(f => f.applicationId))
+      return this.applications.filter(
+        app => (app.status === 'pending' || app.status === 'processing') && roleFlowAppIds.has(app.id),
+      ).length
     },
   },
 
@@ -375,6 +395,11 @@ export const useApplicationStore = defineStore('application', {
       this.currentPage = 1
     },
 
+    setFilterRole(role: string) {
+      this.filterRole = role
+      this.currentPage = 1
+    },
+
     setSearchQuery(query: string) {
       this.searchQuery = query
       this.currentPage = 1
@@ -388,6 +413,7 @@ export const useApplicationStore = defineStore('application', {
       this.filterStatus = ''
       this.filterType = ''
       this.filterDepartment = ''
+      this.filterRole = ''
       this.searchQuery = ''
       this.currentPage = 1
     },

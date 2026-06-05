@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ApprovalFlow from '@/components/detail/ApprovalFlow.vue'
@@ -8,7 +8,7 @@ import OperationRecords from '@/components/detail/OperationRecords.vue'
 import ApprovalActions from '@/components/detail/ApprovalActions.vue'
 import { useApplicationStore } from '@/stores/application'
 import { useAlertStore } from '@/stores/alert'
-import { ArrowLeft, FileText, User, Building2, Calendar, DollarSign, ChevronRight } from 'lucide-vue-next'
+import { ArrowLeft, FileText, User, Building2, Calendar, DollarSign, ChevronRight, Eye } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +34,9 @@ const appAlerts = computed(() => {
   return alertStore.getAlertsByApplicationId(appStore.currentApplication.id).filter(a => !a.dismissed)
 })
 
+const selectedNode = computed(() => appStore.selectedNode)
+const currentNode = computed(() => appStore.currentNode)
+
 function goBack() {
   router.push('/')
 }
@@ -41,6 +44,10 @@ function goBack() {
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function selectNodeById(nodeId: string) {
+  appStore.selectNode(nodeId)
 }
 
 onMounted(() => {
@@ -145,26 +152,35 @@ onUnmounted(() => {
           </div>
 
           <div class="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
-            <h3 class="text-sm font-medium text-slate-400 mb-3">流程进度</h3>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-medium text-slate-400">流程进度</h3>
+              <div v-if="selectedNode" class="flex items-center gap-1.5 text-xs text-amber-400">
+                <Eye class="w-3 h-3" />
+                <span>查看：{{ selectedNode.name }}</span>
+              </div>
+            </div>
             <div v-if="appStore.currentFlow" class="flex items-center gap-1 flex-wrap">
               <template v-for="(node, i) in appStore.currentFlow.nodes" :key="node.id">
                 <div
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium cursor-pointer transition-all"
+                  class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium cursor-pointer transition-all"
                   :class="{
                     'bg-emerald-500/20 text-emerald-400': node.status === 'approved',
                     'bg-red-500/20 text-red-400': node.status === 'rejected',
                     'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/50': node.status === 'current',
                     'bg-slate-700/50 text-slate-500': node.status === 'pending',
                     'bg-slate-800/50 text-slate-600 line-through': node.status === 'skipped',
-                    'ring-2 ring-accent': node.id === appStore.selectedNodeId,
+                    'ring-2 ring-accent ring-offset-1 ring-offset-slate-800 scale-105': node.id === appStore.selectedNodeId,
                   }"
-                  @click="appStore.selectNode(node.id)"
+                  @click="selectNodeById(node.id)"
                 >
                   {{ node.name }}
                 </div>
                 <ChevronRight v-if="i < appStore.currentFlow.nodes.length - 1" class="w-3 h-3 text-slate-600" />
               </template>
             </div>
+            <p v-if="selectedNode && currentNode && selectedNode.id !== currentNode.id" class="mt-2 text-xs text-blue-400/80">
+              💡 点击节点查看详情，审批操作仅作用于当前节点「{{ currentNode.name }}」
+            </p>
           </div>
         </div>
 

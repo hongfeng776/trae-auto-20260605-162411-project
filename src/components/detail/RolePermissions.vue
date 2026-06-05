@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Check, X, ShieldAlert, AlertTriangle } from 'lucide-vue-next'
+import { Check, X, ShieldAlert, AlertTriangle, User, Clock, FileText } from 'lucide-vue-next'
 import { useApplicationStore } from '@/stores/application'
 import { useAuthStore } from '@/stores/auth'
+import type { RolePermission } from '@/types'
 
 const appStore = useApplicationStore()
 const authStore = useAuthStore()
@@ -15,7 +16,15 @@ const roleNameMap: Record<string, string> = {
 }
 
 const selectedNode = computed(() => appStore.selectedNode)
-const permissions = computed(() => appStore.selectedNodePermissions)
+const nodePermissions = computed(() => appStore.selectedNodePermissions)
+
+const allRoles = computed(() => {
+  const requiredRoleIds = selectedNode.value?.requiredRoles ?? []
+  return appStore.currentPermissions.map(perm => ({
+    ...perm,
+    isRequired: requiredRoleIds.includes(perm.roleId),
+  }))
+})
 
 const userRoleNotInRequired = computed(() => {
   const node = selectedNode.value
@@ -35,12 +44,23 @@ const requiredRolesText = computed(() => {
   return node.requiredRoles.map(r => roleNameMap[r] ?? r).join('、')
 })
 
-function isNoPermissionRow(perm: { canApprove: boolean; canReject: boolean; canTransfer: boolean }) {
+const recordCount = computed(() => {
+  if (!selectedNode.value) return 0
+  return appStore.selectedNodeRecords.length
+})
+
+function isNoPermissionRow(perm: RolePermission) {
   return !perm.canApprove && !perm.canReject && !perm.canTransfer
 }
 
 function resolveRoleName(perm: { roleId: string; roleName: string }): string {
   return roleNameMap[perm.roleId] ?? perm.roleName
+}
+
+function formatTime(iso: string) {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 </script>
 
@@ -55,10 +75,64 @@ function resolveRoleName(perm: { roleId: string; roleName: string }): string {
     </div>
 
     <div v-if="!selectedNode" class="py-12 text-center text-slate-500">
-      请选择审批节点
+      请选择审批节点查看角色权限
     </div>
 
     <template v-else>
+      <div class="px-5 py-3 border-b border-slate-700/30 bg-slate-800/30">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+              <User class="w-3.5 h-3.5" :class="selectedNode.assignee ? 'text-slate-300' : 'text-amber-400'" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-slate-500">审批人</p>
+              <p v-if="selectedNode.assignee" class="text-sm text-slate-200 truncate">
+                {{ selectedNode.assignee.name }}
+                <span class="text-slate-500">· {{ roleNameMap[selectedNode.assignee.role] ?? selectedNode.assignee.role }}</span>
+              </p>
+              <p v-else class="text-sm text-amber-400">未指定</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+              <FileText class="w-3.5 h-3.5 text-slate-300" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-slate-500">操作记录</p>
+              <p class="text-sm text-slate-200">{{ recordCount }} 条</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+              <Clock class="w-3.5 h-3.5 text-slate-300" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-slate-500">处理时间</p>
+              <p v-if="selectedNode.operatedAt" class="text-sm text-slate-200">{{ formatTime(selectedNode.operatedAt) }}</p>
+              <p v-else class="text-sm text-slate-500">—</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" :class="selectedNode.status === 'current' ? 'bg-amber-500/20' : 'bg-slate-700'">
+              <Clock class="w-3.5 h-3.5" :class="selectedNode.status === 'current' ? 'text-amber-400' : 'text-slate-300'" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-slate-500">节点状态</p>
+              <p class="text-sm" :class="{
+                'text-emerald-400': selectedNode.status === 'approved',
+                'text-red-400': selectedNode.status === 'rejected',
+                'text-amber-400': selectedNode.status === 'current',
+                'text-slate-400': selectedNode.status === 'pending',
+                'text-slate-500': selectedNode.status === 'skipped',
+              }">
+                {{ { approved: '已通过', rejected: '已驳回', current: '处理中', pending: '待处理', skipped: '已跳过' }[selectedNode.status] }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-if="userRoleNotInRequired" class="mx-5 mt-4 px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-2">
         <ShieldAlert class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
         <div>
@@ -80,42 +154,47 @@ function resolveRoleName(perm: { roleId: string; roleName: string }): string {
           <thead>
             <tr class="border-b border-slate-700/50 text-slate-400">
               <th class="text-left px-5 py-3 font-medium">角色</th>
-              <th class="text-center px-4 py-3 font-medium">审批权限</th>
-              <th class="text-center px-4 py-3 font-medium">驳回权限</th>
-              <th class="text-center px-4 py-3 font-medium">转办权限</th>
+              <th class="text-center px-4 py-3 font-medium">审批</th>
+              <th class="text-center px-4 py-3 font-medium">驳回</th>
+              <th class="text-center px-4 py-3 font-medium">转办</th>
               <th class="text-left px-4 py-3 font-medium">权限范围</th>
+              <th class="text-center px-4 py-3 font-medium">关联</th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="perm in permissions"
+              v-for="perm in allRoles"
               :key="perm.roleId"
               :class="[
                 'border-b border-slate-700/30 transition-colors',
-                isNoPermissionRow(perm) ? 'bg-red-500/5' : 'hover:bg-slate-700/30',
+                isNoPermissionRow(perm) ? 'bg-red-500/5' : '',
+                perm.isRequired ? 'bg-amber-500/5' : '',
+                !perm.isRequired && !isNoPermissionRow(perm) ? 'hover:bg-slate-700/30' : '',
               ]"
             >
               <td class="px-5 py-3">
-                <span
-                  :class="[
-                    'font-medium',
-                    isNoPermissionRow(perm) ? 'text-red-400' : 'text-slate-200',
-                  ]"
-                >
-                  {{ resolveRoleName(perm) }}
-                </span>
+                <div class="flex items-center gap-2">
+                  <span
+                    :class="[
+                      'font-medium',
+                      isNoPermissionRow(perm) ? 'text-red-400' : perm.isRequired ? 'text-amber-300' : 'text-slate-200',
+                    ]"
+                  >
+                    {{ resolveRoleName(perm) }}
+                  </span>
+                </div>
               </td>
               <td class="text-center px-4 py-3">
                 <Check v-if="perm.canApprove" class="w-4 h-4 text-emerald-500 inline-block" />
-                <X v-else class="w-4 h-4 text-red-500 inline-block" />
+                <X v-else class="w-4 h-4 text-red-500/50 inline-block" />
               </td>
               <td class="text-center px-4 py-3">
                 <Check v-if="perm.canReject" class="w-4 h-4 text-emerald-500 inline-block" />
-                <X v-else class="w-4 h-4 text-red-500 inline-block" />
+                <X v-else class="w-4 h-4 text-red-500/50 inline-block" />
               </td>
               <td class="text-center px-4 py-3">
                 <Check v-if="perm.canTransfer" class="w-4 h-4 text-emerald-500 inline-block" />
-                <X v-else class="w-4 h-4 text-red-500 inline-block" />
+                <X v-else class="w-4 h-4 text-red-500/50 inline-block" />
               </td>
               <td class="px-4 py-3">
                 <div class="flex flex-wrap gap-1">
@@ -134,10 +213,14 @@ function resolveRoleName(perm: { roleId: string; roleName: string }): string {
                   </span>
                 </div>
               </td>
-            </tr>
-            <tr v-if="permissions.length === 0">
-              <td colspan="5" class="px-5 py-6 text-center text-slate-500">
-                此节点无关联角色权限
+              <td class="text-center px-4 py-3">
+                <span
+                  v-if="perm.isRequired"
+                  class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                >
+                  必需
+                </span>
+                <span v-else class="text-xs text-slate-600">—</span>
               </td>
             </tr>
           </tbody>

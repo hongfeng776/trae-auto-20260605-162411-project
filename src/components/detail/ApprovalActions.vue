@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { CheckCircle, XCircle, ArrowRightLeft, ShieldAlert, AlertTriangle } from 'lucide-vue-next'
+import { CheckCircle, XCircle, ArrowRightLeft, ShieldAlert, AlertTriangle, Info } from 'lucide-vue-next'
 import { useApplicationStore } from '@/stores/application'
 import { useAuthStore } from '@/stores/auth'
 
@@ -24,16 +24,32 @@ const feedbackType = ref<'success' | 'error'>('success')
 const showFeedback = ref(false)
 
 const currentNode = computed(() => appStore.currentNode)
+const selectedNode = computed(() => appStore.selectedNode)
 const currentApplication = computed(() => appStore.currentApplication)
+
+const isSelectedCurrentNode = computed(() => {
+  if (!selectedNode.value || !currentNode.value) return false
+  return selectedNode.value.id === currentNode.value.id
+})
 
 const hasPermission = computed(() => {
   if (!currentNode.value) return false
   return appStore.checkPermission(currentNode.value.id)
 })
 
+const selectedNodePermission = computed(() => {
+  if (!selectedNode.value) return null
+  return appStore.checkPermission(selectedNode.value.id)
+})
+
 const missingApprover = computed(() => {
   if (!currentNode.value) return false
   return !currentNode.value.assignee
+})
+
+const selectedNodeMissingApprover = computed(() => {
+  if (!selectedNode.value) return false
+  return !selectedNode.value.assignee
 })
 
 const isApplicationActionable = computed(() => {
@@ -46,6 +62,11 @@ const allDisabled = computed(() => !hasPermission.value || missingApprover.value
 const requiredRolesText = computed(() => {
   if (!currentNode.value) return ''
   return currentNode.value.requiredRoles.map(r => roleNameMap[r] ?? r).join('、')
+})
+
+const selectedRequiredRolesText = computed(() => {
+  if (!selectedNode.value) return ''
+  return selectedNode.value.requiredRoles.map(r => roleNameMap[r] ?? r).join('、')
 })
 
 function openAction(mode: ActionMode) {
@@ -122,16 +143,39 @@ async function submitAction() {
     </div>
 
     <div class="max-w-5xl mx-auto px-6 py-3">
-      <div v-if="!hasPermission && currentNode" class="mb-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+      <div v-if="selectedNode && !isSelectedCurrentNode" class="mb-2 px-4 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-center gap-2">
+        <Info class="w-4 h-4 text-blue-400 flex-shrink-0" />
+        <span class="text-xs text-blue-400">
+          正在查看节点「{{ selectedNode.name }}」的权限与记录，审批操作仅作用于当前节点「{{ currentNode?.name ?? '—' }}」
+        </span>
+        <button
+          v-if="currentNode"
+          class="ml-auto text-xs text-blue-300 hover:text-blue-200 underline flex-shrink-0"
+          @click="appStore.selectNode(currentNode.id)"
+        >
+          跳转到当前节点
+        </button>
+      </div>
+
+      <div v-if="selectedNode && isSelectedCurrentNode && !hasPermission" class="mb-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
         <ShieldAlert class="w-4 h-4 text-red-400 flex-shrink-0" />
         <span class="text-xs text-red-400">
           越权警告：当前角色[{{ roleNameMap[authStore.currentUser.role] ?? authStore.currentUser.role }}]无权审批此节点，需要：{{ requiredRolesText }}
         </span>
       </div>
 
-      <div v-if="missingApprover && currentNode" class="mb-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2">
+      <div v-if="selectedNode && selectedNodeMissingApprover" class="mb-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2">
         <AlertTriangle class="w-4 h-4 text-amber-400 flex-shrink-0" />
-        <span class="text-xs text-amber-400">缺审批人：此节点未指定审批人，无法执行操作</span>
+        <span class="text-xs text-amber-400">
+          缺审批人：节点「{{ selectedNode.name }}」未指定审批人，{{ isSelectedCurrentNode ? '无法执行操作' : '流程可能阻塞' }}
+        </span>
+      </div>
+
+      <div v-if="selectedNode && !selectedNodePermission && isSelectedCurrentNode && !selectedNodeMissingApprover" class="mb-2 px-4 py-2 bg-slate-600/20 border border-slate-600/30 rounded-lg flex items-center gap-2">
+        <Info class="w-4 h-4 text-slate-400 flex-shrink-0" />
+        <span class="text-xs text-slate-400">
+          当前角色[{{ roleNameMap[authStore.currentUser.role] ?? authStore.currentUser.role }}]不在该节点所需角色[{{ selectedRequiredRolesText }}]中，操作已禁用
+        </span>
       </div>
 
       <div class="flex items-center justify-between gap-4">
@@ -140,7 +184,12 @@ async function submitAction() {
             {{ currentApplication?.title ?? '未选择申请' }}
           </p>
           <p class="text-xs text-slate-500">
-            当前节点：{{ currentNode?.name ?? '—' }}
+            <template v-if="selectedNode && !isSelectedCurrentNode">
+              查看节点：{{ selectedNode.name }} ｜ 当前节点：{{ currentNode?.name ?? '—' }}
+            </template>
+            <template v-else>
+              当前节点：{{ currentNode?.name ?? '—' }}
+            </template>
           </p>
         </div>
 
@@ -200,6 +249,11 @@ async function submitAction() {
           <h3 class="text-lg font-semibold text-slate-200 mb-4">
             {{ actionMode === 'approve' ? '通过审批' : actionMode === 'reject' ? '驳回审批' : '转交审批' }}
           </h3>
+
+          <div class="mb-4 px-3 py-2 bg-slate-700/30 rounded-lg text-xs text-slate-400">
+            节点：{{ currentNode?.name ?? '—' }}
+            <span v-if="currentNode?.assignee" class="ml-2">审批人：{{ currentNode.assignee.name }}</span>
+          </div>
 
           <div v-if="actionMode === 'transfer'" class="mb-4">
             <label class="block text-sm text-slate-400 mb-1.5">目标用户</label>
